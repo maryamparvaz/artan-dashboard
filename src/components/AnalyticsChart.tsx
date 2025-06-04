@@ -1,6 +1,6 @@
 "use client"
 import React from 'react'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, AreaChart, Area } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { ContentActivity } from '@/store/contentStore'
 
 interface ChartDataPoint {
@@ -51,7 +51,7 @@ const AnalyticsChart: React.FC<AnalyticsChartProps> = ({ data, title }) => {
     <div className="w-full h-[300px] bg-slate-800/50 rounded-lg p-4">
       <h3 className="text-lg font-medium text-slate-200 mb-4">{title || 'Content Activity'}</h3>
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+        <LineChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
           <XAxis 
             dataKey="date" 
@@ -64,23 +64,23 @@ const AnalyticsChart: React.FC<AnalyticsChartProps> = ({ data, title }) => {
           />
           <Tooltip content={<CustomTooltip />} />
           <Legend />
-          <Area 
+          <Line 
             type="monotone" 
             dataKey="added" 
-            stackId="1" 
             stroke="#22d3ee" 
-            fill="#22d3ee" 
-            fillOpacity={0.3} 
+            strokeWidth={2}
+            dot={{ fill: '#22d3ee', strokeWidth: 2 }}
+            activeDot={{ r: 6, fill: '#22d3ee' }}
           />
-          <Area 
+          <Line 
             type="monotone" 
             dataKey="deleted" 
-            stackId="1" 
             stroke="#ef4444" 
-            fill="#ef4444" 
-            fillOpacity={0.3} 
+            strokeWidth={2}
+            dot={{ fill: '#ef4444', strokeWidth: 2 }}
+            activeDot={{ r: 6, fill: '#ef4444' }}
           />
-        </AreaChart>
+        </LineChart>
       </ResponsiveContainer>
     </div>
   );

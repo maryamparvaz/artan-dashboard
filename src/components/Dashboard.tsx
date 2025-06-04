@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect } from 'react'
 import { 
   BarChart3, 
   TrendingUp, 
@@ -9,19 +9,36 @@ import {
   DollarSign,
   Activity,
   ShoppingCart,
-  Eye
+  Eye,
+  Loader2
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { useSelector } from 'react-redux'
-import { selectTodayStats, selectTotalStats } from '@/store/contentStore'
-import type { RootState } from '@/store/store'
+import { useSelector, useDispatch } from 'react-redux'
+import { selectTodayStats, selectTotalStats, fetchContents } from '@/store/contentStore'
+import type { RootState, AppDispatch } from '@/store/store'
 import StatsCards from '@/components/StatsCards'
 import AnalyticsChart from '@/components/AnalyticsChart'
+import ActivityGaugeChart from '@/components/ActivityGaugeChart'
 
 const Dashboard = () => {
-  const activities = useSelector((state: RootState) => state.content.activities)
+  const dispatch = useDispatch<AppDispatch>()
+  const { activities, status } = useSelector((state: RootState) => state.content)
   const todayStats = useSelector(selectTodayStats)
   const totalStats = useSelector(selectTotalStats)
+
+  useEffect(() => {
+    if (status === 'idle') {
+      dispatch(fetchContents())
+    }
+  }, [status, dispatch])
+
+  if (status === 'loading') {
+    return (
+      <div className="flex items-center justify-center h-[50vh]">
+        <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+      </div>
+    )
+  }
 
   const statsData = [
     {
@@ -93,23 +110,31 @@ const Dashboard = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-300">Content Added</span>
-                  <span className="text-2xl font-bold text-cyan-400">{todayStats.added}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-300">Content Deleted</span>
-                  <span className="text-2xl font-bold text-red-400">{todayStats.deleted}</span>
-                </div>
-                <div className="pt-4 border-t border-slate-700">
+              <div className="space-y-6">
+                <ActivityGaugeChart 
+                  added={todayStats.added}
+                  deleted={todayStats.deleted}
+                  title="Activity Progress"
+                  description="Shows the ratio of content added vs deleted"
+                />
+                <div className="space-y-4">
                   <div className="flex justify-between items-center">
-                    <span className="text-slate-200 font-medium">Net Change</span>
-                    <span className={`text-xl font-bold ${
-                      todayStats.added - todayStats.deleted >= 0 ? 'text-emerald-400' : 'text-red-400'
-                    }`}>
-                      {todayStats.added - todayStats.deleted > 0 ? '+' : ''}{todayStats.added - todayStats.deleted}
-                    </span>
+                    <span className="text-slate-300">Content Added</span>
+                    <span className="text-2xl font-bold text-cyan-400">{todayStats.added}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-300">Content Deleted</span>
+                    <span className="text-2xl font-bold text-red-400">{todayStats.deleted}</span>
+                  </div>
+                  <div className="pt-4 border-t border-slate-700">
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-200 font-medium">Net Change</span>
+                      <span className={`text-xl font-bold ${
+                        todayStats.added - todayStats.deleted >= 0 ? 'text-emerald-400' : 'text-red-400'
+                      }`}>
+                        {todayStats.added - todayStats.deleted > 0 ? '+' : ''}{todayStats.added - todayStats.deleted}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>

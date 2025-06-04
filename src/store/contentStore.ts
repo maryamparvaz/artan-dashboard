@@ -2,6 +2,9 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import moment from 'moment-jalaali'
 import { contentApi, Content } from '@/services/contentApi'
 
+// Re-export Content type
+export type { Content }
+
 export interface ContentActivity {
   date: string // Jalali date in format 'jYYYY/jMM/jDD'
   added: number
@@ -15,6 +18,88 @@ interface ContentState {
   error: string | null
 }
 
+// Local storage keys
+const TODAY_STATS_KEY = 'content_today_stats'
+const TOTAL_STATS_KEY = 'content_total_stats'
+
+// Safe localStorage access
+const getLocalStorage = (key: string, defaultValue: any) => {
+  if (typeof window === 'undefined') {
+    return defaultValue
+  }
+  try {
+    const item = window.localStorage.getItem(key)
+    return item ? JSON.parse(item) : defaultValue
+  } catch (error) {
+    console.error('Error accessing localStorage:', error)
+    return defaultValue
+  }
+}
+
+const setLocalStorage = (key: string, value: any) => {
+  if (typeof window === 'undefined') {
+    return
+  }
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value))
+  } catch (error) {
+    console.error('Error setting localStorage:', error)
+  }
+}
+
+// Helper functions for localStorage
+const getTodayStats = (): { added: number; deleted: number } => {
+  const today = moment().format('jYYYY/jMM/jDD')
+  const stats = getLocalStorage(TODAY_STATS_KEY, {})
+  return {
+    added: stats[today]?.added || 0,
+    deleted: stats[today]?.deleted || 0
+  }
+}
+
+const updateTodayStats = (type: 'added' | 'deleted') => {
+  const today = moment().format('jYYYY/jMM/jDD')
+  const stats = getLocalStorage(TODAY_STATS_KEY, {})
+  if (!stats[today]) {
+    stats[today] = { added: 0, deleted: 0 }
+  }
+  stats[today][type] = (stats[today][type] || 0) + 1
+  setLocalStorage(TODAY_STATS_KEY, stats)
+}
+
+const getTotalStats = (): { totalAdded: number; totalDeleted: number } => {
+  return getLocalStorage(TOTAL_STATS_KEY, { totalAdded: 0, totalDeleted: 0 })
+}
+
+const updateTotalStats = (type: 'totalAdded' | 'totalDeleted') => {
+  const stats = getTotalStats()
+  stats[type] = (stats[type] || 0) + 1
+  setLocalStorage(TOTAL_STATS_KEY, stats)
+}
+
+// Get activities for the last 7 days
+const getActivities = (): ContentActivity[] => {
+  if (typeof window === 'undefined') {
+    return []
+  }
+  
+  const activities: ContentActivity[] = []
+  const stats = getLocalStorage(TODAY_STATS_KEY, {})
+  
+  // Get the last 7 days including today
+  for (let i = 6; i >= 0; i--) {
+    const date = moment().subtract(i, 'days')
+    const today = date.format('jYYYY/jMM/jDD')
+    const dayStats = stats[today] || { added: 0, deleted: 0 }
+    activities.push({
+      date: today,
+      added: dayStats.added || 0,
+      deleted: dayStats.deleted || 0
+    })
+  }
+  return activities
+}
+
 // Async thunks
 export const fetchContents = createAsyncThunk(
   'content/fetchContents',
@@ -26,7 +111,10 @@ export const fetchContents = createAsyncThunk(
 export const addContent = createAsyncThunk(
   'content/addContent',
   async (content: Omit<Content, 'id' | 'createdDate' | 'createdAt'>) => {
-    return await contentApi.create(content)
+    const result = await contentApi.create(content)
+    updateTodayStats('added')
+    updateTotalStats('totalAdded')
+    return result
   }
 )
 
@@ -41,27 +129,15 @@ export const deleteContent = createAsyncThunk(
   'content/deleteContent',
   async (id: number) => {
     await contentApi.delete(id)
+    updateTodayStats('deleted')
+    updateTotalStats('totalDeleted')
     return id
   }
 )
 
-// Mock data for activities (last 7 days)
-const generateMockActivities = (): ContentActivity[] => {
-  const activities: ContentActivity[] = []
-  for (let i = 6; i >= 0; i--) {
-    const date = moment().subtract(i, 'days')
-    activities.push({
-      date: date.format('jYYYY/jMM/jDD'),
-      added: Math.floor(Math.random() * 10) + 1,
-      deleted: Math.floor(Math.random() * 5)
-    })
-  }
-  return activities
-}
-
 const initialState: ContentState = {
   contents: [],
-  activities: generateMockActivities(),
+  activities: getActivities(),
   status: 'idle',
   error: null
 }
@@ -78,10 +154,10 @@ const contentSlice = createSlice({
       })
       .addCase(fetchContents.fulfilled, (state, action) => {
         state.status = 'succeeded'
-        // Sort contents by createdAt in descending order (newest first)
         state.contents = action.payload.sort((a, b) => 
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         )
+        state.activities = getActivities()
       })
       .addCase(fetchContents.rejected, (state, action) => {
         state.status = 'failed'
@@ -91,18 +167,13 @@ const contentSlice = createSlice({
       // Add content
       .addCase(addContent.fulfilled, (state, action) => {
         state.contents.unshift(action.payload)
-        const today = moment().format('jYYYY/jMM/jDD')
-        const todayActivity = state.activities.find(activity => activity.date === today)
-        if (todayActivity) {
-          todayActivity.added += 1
-        }
+        state.activities = getActivities()
       })
       
       // Update content
       .addCase(updateContent.fulfilled, (state, action) => {
         const index = state.contents.findIndex(content => content.id === action.payload.id)
         if (index !== -1) {
-          // Preserve the original dates
           state.contents[index] = {
             ...action.payload,
             createdDate: state.contents[index].createdDate,
@@ -114,32 +185,26 @@ const contentSlice = createSlice({
       // Delete content
       .addCase(deleteContent.fulfilled, (state, action) => {
         state.contents = state.contents.filter(content => content.id !== action.payload)
-        const today = moment().format('jYYYY/jMM/jDD')
-        const todayActivity = state.activities.find(activity => activity.date === today)
-        if (todayActivity) {
-          todayActivity.deleted += 1
-        }
+        state.activities = getActivities()
       })
   }
 })
 
 // Selectors
 export const selectTodayStats = (state: { content: ContentState }) => {
-  const today = moment().format('jYYYY/jMM/jDD')
-  const todayActivity = state.content.activities.find(activity => activity.date === today)
-  return {
-    added: todayActivity?.added || 0,
-    deleted: todayActivity?.deleted || 0
+  if (typeof window === 'undefined') {
+    return { added: 0, deleted: 0 }
   }
+  return getTodayStats()
 }
 
 export const selectTotalStats = (state: { content: ContentState }) => {
-  const { contents, activities } = state.content
-  const totalAdded = activities.reduce((sum, activity) => sum + activity.added, 0)
-  const totalDeleted = activities.reduce((sum, activity) => sum + activity.deleted, 0)
-  
+  if (typeof window === 'undefined') {
+    return { total: 0, totalAdded: 0, totalDeleted: 0 }
+  }
+  const { totalAdded, totalDeleted } = getTotalStats()
   return {
-    total: contents.length,
+    total: state.content.contents.length,
     totalAdded,
     totalDeleted
   }
